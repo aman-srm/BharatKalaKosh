@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bharat Kala Kosh - Interactive Indian Art Map</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
+    .font-heading { font-family: 'Cinzel', serif; }
+    #map { height: 100%; width: 100%; z-index: 1; background: #0f172a; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #d97706; }
+    .custom-marker { display: flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 0 15px rgba(217,119,6,.8); transition: transform .2s ease; cursor: pointer; }
+    .custom-marker:hover { transform: scale(1.25); }
+    .img-skeleton { background: linear-gradient(90deg,#1e293b 25%,#334155 50%,#1e293b 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+  </style>
+</head>
+<body class="h-screen flex flex-col bg-slate-950 text-slate-100">
+
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-col sm:flex-row items-center justify-between z-20 shrink-0 gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="bg-amber-500/10 border border-amber-500/30 p-2 rounded-xl text-amber-500"><i data-lucide="palette" class="w-6 h-6"></i></div>
+      <div>
+        <h1 class="font-heading text-lg sm:text-xl font-bold tracking-wider text-amber-400">BHARAT KALA KOSH</h1>
+        <p class="text-xs text-slate-400">Interactive Indian Art History & Cultural Heritage Map</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 w-full sm:w-auto">
+      <div class="relative flex-1 sm:w-64">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="text" id="searchInput" placeholder="Search art form, region, style..." class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-amber-500 transition-colors">
+      </div>
+      <select id="regionFilter" class="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500 transition-colors cursor-pointer">
+        <option value="All">All Regions</option>
+        <option value="North">North India</option>
+        <option value="South">South India</option>
+        <option value="East">East India</option>
+        <option value="West">West India</option>
+        <option value="Central">Central India</option>
+      </select>
+      <button id="toggleModalBtn" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shrink-0 shadow-lg shadow-amber-500/20">
+        <i data-lucide="file-text" class="w-4 h-4"></i><span>CO1 Summary</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+    <aside class="w-full md:w-96 bg-slate-900 border-r border-slate-800 flex flex-col z-10 shrink-0 h-2/5 md:h-full">
+      <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <span class="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+          <i data-lucide="map-pin" class="w-4 h-4"></i> Art Heritage Hubs (<span id="hubCount">0</span>)
+        </span>
+        <span class="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">Click to inspect</span>
+      </div>
+      <div id="hubList" class="flex-1 overflow-y-auto p-3 space-y-2.5"></div>
+    </aside>
+
+    <main class="flex-1 relative h-3/5 md:h-full">
+      <div id="map"></div>
+      <div id="detailPanel" class="hidden absolute top-4 right-4 z-20 w-80 sm:w-96 bg-slate-900/95 border border-slate-700 rounded-2xl p-5 backdrop-blur-md shadow-2xl transition-all duration-300 max-h-[90%] overflow-y-auto">
+        <button id="closePanelBtn" class="absolute top-4 right-4 z-10 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+        <div id="detailContent"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="reportModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <div class="flex items-center gap-2"><i data-lucide="book-open" class="w-5 h-5 text-amber-400"></i><h2 class="font-heading text-lg text-amber-400 font-bold">CO1 Project Report & Synthesis</h2></div>
+        <button id="closeModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-800"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-6 overflow-y-auto text-sm space-y-4 text-slate-300 leading-relaxed">
+        <h3 class="text-base font-semibold text-white border-b border-slate-800 pb-2">Geographic Spread & Historical Influence of Indian Art</h3>
+        <p>Indian art history is deeply intertwined with geographical topography, trade routes, political patronage, and spiritual movements. From the natural rock shelters of Bhimbetka to the royal courts of Thanjavur and the Himalayan valleys of Kangra, each region evolved unique visual vernaculars.</p>
+        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 space-y-2">
+          <h4 class="font-semibold text-amber-300 text-xs uppercase tracking-wider">Key Regional Patterns:</h4>
+          <ul class="list-disc pl-5 space-y-1 text-xs text-slate-300">
+            <li><strong class="text-white">Western & Central India:</strong> Cave murals and rock shelters (Ajanta, Bhimbetka) utilized natural pigments to document Buddhist narratives and prehistoric lifestyle.</li>
+            <li><strong class="text-white">Eastern India:</strong> Folk scroll paintings (Kalighat, Madhubani) transitioned from village rituals to urban social satire and nationalist art movements.</li>
+            <li><strong class="text-white">Southern India:</strong> Temple patronage encouraged luxurious iconographic art with high-relief gesso work and real gold leaf ornamentation (Tanjore).</li>
+            <li><strong class="text-white">Northern India:</strong> Lyrical miniature traditions (Pahari/Kangra) emphasized delicate line work, romantic poetry, and naturalistic landscape backdrops.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Each hub has a `wiki` field: the Wikipedia article whose lead image shows the ACTUAL art form.
+    // To change a picture, just change the article title (e.g. "Padmapani") — no image URLs needed.
+    const artHubs = [
+      { id:"ajanta", name:"Ajanta Caves", location:"Aurangabad, Maharashtra", region:"West", coords:[20.5523,75.7004],
+        artStyle:"Buddhist Cave Murals & Frescoes", period:"2nd Century BCE – 6th Century CE", patronage:"Satavahana & Vakataka Dynasties",
+        description:"Fresco-secco wall murals depicting the Jataka tales and life of Lord Buddha. Celebrated for natural grace, emotive gestures, and elegant line work.",
+        wiki:"Ajanta_Caves", keyFeatures:["Padmapani & Vajrapani Bodhisattvas","Tempera pigments on clay plaster","Volumetric shading & expressive eyes"] },
+      { id:"tanjore", name:"Thanjavur (Tanjore)", location:"Thanjavur, Tamil Nadu", region:"South", coords:[10.7870,79.1378],
+        artStyle:"Tanjore Gold Leaf Painting", period:"16th – 18th Century CE", patronage:"Nayaka & Maratha Rulers",
+        description:"Classical South Indian painting style known for gesso relief work, glass bead inlay, and gold leaf foil borders.",
+        wiki:"Tanjore_painting", keyFeatures:["Gold leaf gilding","Embossed gesso paste (Chunnam)","Iconographic figures of deities"] },
+      { id:"kalighat", name:"Kalighat & Santiniketan", location:"Kolkata, West Bengal", region:"East", coords:[22.5726,88.3639],
+        artStyle:"Kalighat Pats & Bengal School", period:"19th – 20th Century CE", patronage:"Urban Patuas & Nationalist Art Movement",
+        description:"Evolved near Kalighat temple using bold brush contours and quick wash techniques. Transitioned to modern Indian art under Abanindranath Tagore.",
+        wiki:"Kalighat_painting", keyFeatures:["Bold fluid brushstrokes","Social commentary & satire","Flat color fills on handmade paper"] },
+      { id:"kangra", name:"Kangra Valley", location:"Kangra, Himachal Pradesh", region:"North", coords:[32.1024,76.2691],
+        artStyle:"Pahari Miniature Painting", period:"18th Century CE", patronage:"Raja Sansar Chand",
+        description:"Subtle miniature painting style depicting romantic themes of Radha-Krishna against lush green Himalayan hills.",
+        wiki:"Kangra_painting", keyFeatures:["Delicate line work","Poetic naturalism","Natural leaf and mineral dyes"] },
+      { id:"bhimbetka", name:"Bhimbetka Caves", location:"Raisen, Madhya Pradesh", region:"Central", coords:[22.9363,77.6124],
+        artStyle:"Prehistoric Rock Art", period:"10,000 BCE (Mesolithic Era)", patronage:"Early Human Hunter-Gatherer Tribal Groups",
+        description:"Among the oldest human art expressions in Asia. Red and white ochre rock wall paintings showing wild animals, hunting, and ceremonial dances.",
+        wiki:"Bhimbetka_rock_shelters", keyFeatures:["Red & white natural oxides","Dynamic stick-figure movement","Wildlife & tribal rituals"] },
+      { id:"mithila", name:"Mithila (Madhubani)", location:"Madhubani, Bihar", region:"East", coords:[26.3492,86.0717],
+        artStyle:"Madhubani Ritual Folk Painting", period:"Ancient Roots – Modern Canvas Era", patronage:"Community Women & Regional Artisans",
+        description:"Traditional wall art drawn with twigs, fingers, and nib-pens. Uses geometric symmetry, floral borders, and double line outlines.",
+        wiki:"Madhubani_art", keyFeatures:["Double outlines with hatch fills","Natural pigments (turmeric, indigo)","Symbolic fish, peacock, & sun motifs"] },
+      { id:"kalamkari", name:"Srikalahasti & Machilipatnam", location:"Andhra Pradesh", region:"South", coords:[13.7500,79.7000],
+        artStyle:"Kalamkari Hand-Printed Textile Art", period:"11th Century – Vijayanagara Period", patronage:"Vijayanagara Emperors & Foreign Traders",
+        description:"Pen-drawn or block-printed cotton art using bamboo pens ('kalam') and natural vegetable dyes.",
+        wiki:"Kalamkari", keyFeatures:["Bamboo reed pen strokes","Floral vines & mythical lions","Myrobalan & iron rust processing"] },
+      { id:"warli", name:"Palghar (Warli Region)", location:"Palghar, Maharashtra", region:"West", coords:[19.6967,72.7699],
+        artStyle:"Warli Tribal Art", period:"2500 BCE Roots (Living Tradition)", patronage:"Warli Indigenous Tribe",
+        description:"Minimalist geometric tribal art painted on mud walls using rice paste and water with bamboo twigs.",
+        wiki:"Warli_painting", keyFeatures:["Triangles & circles creating figures","Tarpa folk dance composition","Red ochre (Geru) background"] },
+      { id:"gond", name:"Patangarh (Gond Region)", location:"Dindori, Madhya Pradesh", region:"Central", coords:[22.9500,81.0800],
+        artStyle:"Gond Pardhan Line-and-Dot Art", period:"Traditional Folk Era – Modernized 1980s", patronage:"Jangarh Singh Shyam Movement",
+        description:"Intricate folk paintings filled with signature repeating patterns (dots, lines, dashes) depicting sacred trees and forest spirits.",
+        wiki:"Gond_painting", keyFeatures:["Intricate signature line patterns","Luminous vibrant colors","Mythological flora & fauna"] },
+      { id:"phad", name:"Bhilwara (Phad Region)", location:"Bhilwara, Rajasthan", region:"North", coords:[25.3407,74.6313],
+        artStyle:"Phad Folk Scroll Painting", period:"14th Century CE", patronage:"Joshi Community & Folk Singers (Bhopas)",
+        description:"Long canvas scroll paintings depicting stories of folk heroes Pabuji and Devnarayanji, used in nomadic storytelling performances.",
+        wiki:"Phad", keyFeatures:["Horizontal narrative layout","Bold red, yellow, and orange hues","Dynamic figures facing each other"] }
+    ];
+
+    // --- Real images from Wikipedia (free, keyless, CORS-enabled) ---
+    const imageCache = {};
+    async function getWikiImage(title) {
+      if (imageCache[title]) return imageCache[title];
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      if (!res.ok) throw new Error('No page');
+      const d = await res.json();
+      const thumb = d.thumbnail && d.thumbnail.source;
+      const info = {
+        src: thumb ? thumb.replace(/\/\d+px-/, '/800px-') : (d.originalimage && d.originalimage.source),
+        fallback: thumb || (d.originalimage && d.originalimage.source),
+        page: d.content_urls && d.content_urls.desktop.page
+      };
+      if (!info.src) throw new Error('No image');
+      imageCache[title] = info;
+      return info;
+    }
+
+    const map = L.map('map', { center:[22.5937,78.9629], zoom:5, zoomControl:false });
+    L.control.zoom({ position:'topright' }).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution:'Tiles &copy; Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS', maxZoom:18
+    }).addTo(map);
+
+    let markers = {};
+    const regionColors = { North:'#f59e0b', South:'#ec4899', East:'#10b981', West:'#3b82f6', Central:'#8b5cf6' };
+
+    function createCustomMarkerIcon(region) {
+      const color = regionColors[region] || '#f59e0b';
+      return L.divIcon({
+        className:'custom-pin',
+        html:`<div class="custom-marker" style="background-color:${color};width:28px;height:28px;border:2px solid white;"><div style="width:10px;height:10px;background-color:white;border-radius:50%;"></div></div>`,
+        iconSize:[28,28], iconAnchor:[14,14]
+      });
+    }
+
+    function renderHubs(data) {
+      const list = document.getElementById('hubList');
+      list.innerHTML = '';
+      document.getElementById('hubCount').innerText = data.length;
+      Object.values(markers).forEach(m => map.removeLayer(m));
+      markers = {};
+
+      data.forEach(hub => {
+        const card = document.createElement('div');
+        card.className = "p-3.5 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-amber-500/50 rounded-xl cursor-pointer transition-all duration-200 group";
+        card.onclick = () => selectHub(hub);
+        card.innerHTML = `
+          <div class="flex justify-between items-start mb-1.5">
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-700 text-amber-400 uppercase tracking-wider">${hub.region} • ${hub.location.split(',')[0]}</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all"></i>
+          </div>
+          <h3 class="font-heading text-sm font-bold text-slate-100 group-hover:text-amber-300 transition-colors">${hub.name}</h3>
+          <p class="text-xs text-slate-400 mt-0.5 line-clamp-1">${hub.artStyle}</p>
+          <p class="text-[10px] text-slate-500 mt-2 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i> ${hub.period}</p>`;
+        list.appendChild(card);
+
+        const marker = L.marker(hub.coords, { icon: createCustomMarkerIcon(hub.region) }).addTo(map);
+        marker.on('click', () => selectHub(hub));
+        markers[hub.id] = marker;
+      });
+      lucide.createIcons();
+    }
+
+    let currentHubId = null;
+
+    function selectHub(hub) {
+      currentHubId = hub.id;
+      map.flyTo(hub.coords, 7, { duration: 1.2 });
+      const panel = document.getElementById('detailPanel');
+      const content = document.getElementById('detailContent');
+
+      content.innerHTML = `
+        <div id="imgBox" class="img-skeleton relative rounded-xl overflow-hidden mb-1 border border-slate-700 h-44">
+          <span class="absolute bottom-2 left-2 z-10 text-[10px] bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded">${hub.artStyle}</span>
+        </div>
+        <p id="imgCredit" class="text-[10px] text-slate-500 mb-3 h-3"></p>
+        <h2 class="font-heading text-lg font-bold text-amber-400 leading-snug">${hub.name}</h2>
+        <p class="text-xs text-slate-400 mb-3 flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> ${hub.location}</p>
+        <div class="space-y-3 text-xs text-slate-300">
+          <div><span class="text-[10px] text-slate-500 uppercase font-semibold block">Era & Period</span><p class="text-slate-200 font-medium">${hub.period}</p></div>
+          <div><span class="text-[10px] text-slate-500 uppercase font-semibold block">Patronage / Origin</span><p class="text-slate-200 font-medium">${hub.patronage}</p></div>
+          <div><span class="text-[10px] text-slate-500 uppercase font-semibold block">Historical Context</span><p class="text-slate-300 leading-relaxed mt-0.5">${hub.description}</p></div>
+          <div class="pt-2 border-t border-slate-800">
+            <span class="text-[10px] text-amber-400 uppercase font-semibold block mb-1.5">Artistic Characteristics</span>
+            <ul class="space-y-1">${hub.keyFeatures.map(f => `<li class="flex items-center gap-1.5 text-[11px]"><i data-lucide="check-circle-2" class="w-3 h-3 text-amber-500"></i> ${f}</li>`).join('')}</ul>
+          </div>
+        </div>`;
+      panel.classList.remove('hidden');
+      lucide.createIcons();
+
+      // Load the real image
+      getWikiImage(hub.wiki).then(info => {
+        if (currentHubId !== hub.id) return; // user clicked another hub meanwhile
+        const box = document.getElementById('imgBox');
+        const img = new Image();
+        img.alt = hub.name;
+        img.className = 'w-full h-full object-cover';
+        img.onerror = () => { if (img.src !== info.fallback) img.src = info.fallback; else showNoImage(); };
+        img.onload = () => {
+          box.classList.remove('img-skeleton');
+          box.prepend(img);
+          const g = document.createElement('div');
+          g.className = 'absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent';
+          box.insertBefore(g, box.children[1]);
+          document.getElementById('imgCredit').innerHTML = info.page
+            ? `Image: <a href="${info.page}" target="_blank" rel="noopener" class="underline hover:text-amber-400">Wikipedia / Wikimedia Commons</a>` : '';
+        };
+        img.src = info.src;
+      }).catch(showNoImage);
+
+      function showNoImage() {
+        const box = document.getElementById('imgBox');
+        if (!box || currentHubId !== hub.id) return;
+        box.classList.remove('img-skeleton');
+        box.classList.add('bg-slate-800', 'flex', 'items-center', 'justify-center');
+        box.insertAdjacentHTML('afterbegin', '<span class="text-xs text-slate-500">Image unavailable</span>');
+      }
+    }
+
+    function filterHubs() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const r = document.getElementById('regionFilter').value;
+      renderHubs(artHubs.filter(h =>
+        (h.name.toLowerCase().includes(q) || h.artStyle.toLowerCase().includes(q) || h.location.toLowerCase().includes(q)) &&
+        (r === 'All' || h.region === r)));
+    }
+
+    document.getElementById('searchInput').addEventListener('input', filterHubs);
+    document.getElementById('regionFilter').addEventListener('change', filterHubs);
+    document.getElementById('closePanelBtn').addEventListener('click', () => document.getElementById('detailPanel').classList.add('hidden'));
+    const reportModal = document.getElementById('reportModal');
+    document.getElementById('toggleModalBtn').addEventListener('click', () => reportModal.classList.remove('hidden'));
+    document.getElementById('closeModalBtn').addEventListener('click', () => reportModal.classList.add('hidden'));
+
+    renderHubs(artHubs);
+    lucide.createIcons();
+  </script>
+</body>
+</html>
